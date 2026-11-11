@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARCANE :: PC Command Center</title>
+    <style>
+        :root {
+            --bg: #090a0f; --panel-bg: rgba(15, 18, 25, 0.85);
+            --matrix: #00ff66; --crimson: #ff3333; --cyber-blue: #00d4ff;
+            --text: #c0c5d0; --border: rgba(0, 255, 102, 0.25);
+            --glow-green: 0 0 10px rgba(0, 255, 102, 0.4);
+            --glow-red: 0 0 10px rgba(255, 51, 51, 0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Consolas', monospace; }
+        body {
+            background-color: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden;
+            background-image: linear-gradient(rgba(0, 255, 102, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 102, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+        body::after {
+            content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+        header {
+            border-bottom: 2px solid var(--matrix); padding: 15px 30px; display: flex;
+            justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.8); box-shadow: 0 0 15px rgba(0, 255, 102, 0.2);
+        }
+        header h1 { font-size: 24px; color: var(--matrix); letter-spacing: 4px; text-shadow: var(--glow-green); }
+        header h1 span { color: var(--crimson); text-shadow: var(--glow-red); }
+        #live-clock { font-size: 16px; color: var(--cyber-blue); letter-spacing: 2px; }
+
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px 30px; height: calc(100vh - 70px); }
+        .panel {
+            background: var(--panel-bg); border: 1px solid var(--border); padding: 20px;
+            box-shadow: inset 0 0 20px rgba(0, 255, 102, 0.05); clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px)); position: relative;
+        }
+        .panel::before { content: ''; position: absolute; top: 0; left: 0; width: 30px; height: 2px; background: var(--matrix); box-shadow: var(--glow-green); }
+        .panel-title { color: var(--cyber-blue); font-size: 14px; letter-spacing: 2px; margin-bottom: 15px; border-bottom: 1px dashed var(--border); padding-bottom: 5px; }
+
+        .meter { margin-bottom: 15px; }
+        .meter-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+        .meter-bar { width: 100%; height: 12px; background: rgba(0,0,0,0.8); border: 1px solid var(--border); }
+        .meter-fill { height: 100%; width: 0%; background: var(--matrix); box-shadow: var(--glow-green); transition: width 0.5s ease; }
+        .meter-fill.danger { background: var(--crimson); box-shadow: var(--glow-red); }
+
+        .grid-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .grid-btns.quad { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+        button {
+            background: rgba(0, 255, 102, 0.1); border: 1px solid var(--matrix); color: var(--matrix);
+            padding: 10px; cursor: pointer; font-size: 12px; letter-spacing: 1px; transition: 0.3s;
+            clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+        }
+        button:hover { background: var(--matrix); color: #000; box-shadow: var(--glow-green); }
+        button.danger { border-color: var(--crimson); color: var(--crimson); background: rgba(255, 51, 51, 0.1); }
+        button.danger:hover { background: var(--crimson); color: #000; box-shadow: var(--glow-red); }
+
+        input[type="text"], select {
+            background: rgba(0,0,0,0.6); border: 1px solid var(--border); color: var(--matrix);
+            padding: 10px; width: 100%; margin-bottom: 10px; font-family: inherit; outline: none;
+        }
+        input[type="text"]:focus, select:focus { border-color: var(--matrix); box-shadow: var(--glow-green); }
+        
+        .terminal {
+            background: #000; border: 1px solid var(--border); height: 200px; padding: 10px; overflow-y: auto;
+            font-size: 12px; color: var(--matrix); white-space: pre-wrap; margin-top: 15px;
+        }
+        .terminal .err { color: var(--crimson); }
+        .terminal .info { color: var(--cyber-blue); }
+        .data-row { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; border-bottom: 1px dashed rgba(0,255,102,0.1); }
+        .data-row span:last-child { color: var(--matrix); font-weight: bold; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal { background: var(--bg); border: 2px solid var(--crimson); padding: 30px; text-align: center; box-shadow: 0 0 30px rgba(255, 51, 51, 0.3); clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px)); }
+        .modal h2 { color: var(--crimson); margin-bottom: 15px; letter-spacing: 2px; text-shadow: var(--glow-red); }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>PROJECT <span>ARCANE</span> // COMMAND CENTER</h1>
+        <div id="live-clock">00:00:00</div>
+    </header>
+
+    <div class="dashboard">
+        <!-- LEFT COLUMN -->
+        <div style="display: flex; flex-direction: column; gap: 20px; overflow-y: auto;">
+            
+            <div class="panel">
+                <div class="panel-title">SYS_RESOURCES // LIVE</div>
+                <div class="meter">
+                    <div class="meter-label"><span>CPU</span><span id="cpu-txt">0%</span></div>
+                    <div class="meter-bar"><div class="meter-fill" id="cpu-bar"></div></div>
+                </div>
+                <div class="meter">
+                    <div class="meter-label"><span>RAM</span><span id="ram-txt">0%</span></div>
+                    <div class="meter-bar"><div class="meter-fill" id="ram-bar"></div></div>
+                </div>
+                <div class="meter">
+                    <div class="meter-label"><span>DISK</span><span id="disk-txt">0%</span></div>
+                    <div class="meter-bar"><div class="meter-fill" id="disk-bar"></div></div>
+                </div>
+                <div class="data-row" style="margin-top: 10px;"><span>HOST</span><span id="os-host">-</span></div>
+                <div class="data-row"><span>USER</span><span id="os-user">-</span></div>
+                <div class="data-row"><span>UPTIME</span><span id="os-uptime">-</span></div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">APP_LAUNCHER</div>
+                <div class="grid-btns">
+                    <button onclick="launchApp('minecraft')">SKLauncher (Minecraft)</button>
+                    <button onclick="launchApp('spotify')">Spotify</button>
+                    <button onclick="launchApp('steam')">Steam</button>
+                    <button onclick="launchApp('taskmgr')">Task Manager</button>
+                </div>
+                <div class="grid-btns quad" style="margin-top: 10px;">
+                    <button onclick="launchFolder('downloads')">Downloads</button>
+                    <button onclick="launchFolder('desktop')">Desktop</button>
+                    <button onclick="launchApp('cmd')">CMD</button>
+                    <button onclick="launchApp('calc')">Calc</button>
+                </div>
+            </div>
+
+            <!-- NAYA TERMINAL HUB PANEL -->
+            <div class="panel">
+                <div class="panel-title">SYSTEM_TERMINALS</div>
+                <div class="grid-btns quad">
+                    <button onclick="openTerm('kali')">Kali WSL</button>
+                    <button onclick="openTerm('ubuntu')">Ubuntu WSL</button>
+                    <button onclick="openTerm('cmd')">CMD</button>
+                    <button onclick="openTerm('admin')">Admin CMD</button>
+                </div>
+                
+                <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 15px;">
+                    <label style="font-size: 12px; color: var(--cyber-blue); margin-bottom: 5px; display: block;">Quick Command Launcher:</label>
+                    <select id="term-select" onchange="updateCommands()">
+                        <option value="kali">Kali Linux</option>
+                        <option value="ubuntu">Ubuntu</option>
+                        <option value="cmd">CMD / Windows</option>
+                    </select>
+                    
+                    <!-- Yahan JS se commands load hongi -->
+                    <div id="command-buttons" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;"></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">POWER_CONTROLS</div>
+                <div class="grid-btns quad">
+                    <button onclick="powerAction('lock')">Lock</button>
+                    <button class="danger" onclick="powerAction('sleep')">Sleep</button>
+                    <button class="danger" onclick="powerAction('restart')">Restart</button>
+                    <button class="danger" onclick="powerAction('shutdown')">Shutdown</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div style="display: flex; flex-direction: column; gap: 20px; overflow-y: auto;">
+            <div class="panel">
+                <div class="panel-title">NET_RECON</div>
+                <div class="data-row"><span>HOSTNAME</span><span id="net-host">-</span></div>
+                <div class="data-row"><span>PRIVATE IP</span><span id="net-priv">-</span></div>
+                <div class="data-row"><span>PUBLIC IP</span><span id="net-pub">-</span></div>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button onclick="scanDevices()" style="flex: 1;">ARP Scan</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-title">UTILITIES // HACKER_TOOLS</div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="ping-target" placeholder="Target IP / Domain (e.g. 8.8.8.8)">
+                    <button onclick="pingTarget()" style="height: 38px;">Ping</button>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="port-target" placeholder="IP">
+                    <input type="text" id="port-range" placeholder="Start-End (e.g. 80-100)" style="width: 150px;">
+                    <button onclick="portScan()" style="height: 38px;">Scan</button>
+                </div>
+            </div>
+
+            <div class="panel" style="flex: 1; display: flex; flex-direction: column;">
+                <div class="panel-title" style="display: flex; justify-content: space-between;">
+                    <span>SYSTEM_LOGS</span>
+                    <span style="cursor: pointer; color: var(--crimson);" onclick="clearLog()">[CLEAR]</span>
+                </div>
+                <div class="terminal" id="terminal"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="power-modal">
+        <div class="modal">
+            <h2>⚠️ CRITICAL ACTION ⚠️</h2>
+            <p style="margin-bottom: 15px; font-size: 14px;">CONFIRM ACCESS CODE TO EXECUTE POWER PROTOCOL</p>
+            <input type="text" id="access-code" placeholder="ENTER CODE (Default: ARCANE-77)" style="text-align: center; font-size: 16px; letter-spacing: 3px;">
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="closeModal()" style="flex: 1;">Abort</button>
+                <button class="danger" onclick="confirmPower()" style="flex: 1;">Execute</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Clock
+        setInterval(() => { document.getElementById('live-clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+
+        // Terminal Log
+        function log(msg, type = 'ok') {
+            const term = document.getElementById('terminal');
+            const time = new Date().toLocaleTimeString();
+            let colorClass = type === 'err' ? 'err' : (type === 'info' ? 'info' : '');
+            term.innerHTML += `<br><span style="color:#666;">[${time}]</span> <span class="${colorClass}">${msg}</span>`;
+            term.scrollTop = term.scrollHeight;
+        }
+        function clearLog() { document.getElementById('terminal').innerHTML = 'SYSTEM INITIALIZED...'; }
+
+        // Fetch Stats & Net Info
+        function updateStats() {
+            fetch('/api/system/stats').then(res => res.json()).then(data => {
+                if (data.error) return log(data.error, 'err');
+                document.getElementById('cpu-txt').innerText = data.cpu.percent + '%';
+                document.getElementById('cpu-bar').style.width = data.cpu.percent + '%';
+                document.getElementById('cpu-bar').className = 'meter-fill ' + (data.cpu.percent > 80 ? 'danger' : '');
+                
+                document.getElementById('ram-txt').innerText = data.ram.percent + '%';
+                document.getElementById('ram-bar').style.width = data.ram.percent + '%';
+                document.getElementById('ram-bar').className = 'meter-fill ' + (data.ram.percent > 80 ? 'danger' : '');
+                
+                document.getElementById('disk-txt').innerText = data.disk.percent + '%';
+                document.getElementById('disk-bar').style.width = data.disk.percent + '%';
+                document.getElementById('disk-bar').className = 'meter-fill ' + (data.disk.percent > 90 ? 'danger' : '');
+                
+                document.getElementById('os-host').innerText = data.os.hostname;
+                document.getElementById('os-user').innerText = data.os.username;
+                document.getElementById('os-uptime').innerText = data.uptime.formatted;
+            });
+        }
+        setInterval(updateStats, 2000); updateStats();
+
+        fetch('/api/net/info').then(res => res.json()).then(data => {
+            document.getElementById('net-host').innerText = data.hostname;
+            document.getElementById('net-priv').innerText = data.private_ip;
+            document.getElementById('net-pub').innerText = data.public_ip;
+        });
+
+        // Launch Logic
+        function launchApp(app) {
+            log(`> Initializing sequence for ${app.toUpperCase()}...`, 'info');
+            fetch('/api/launch/app', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({app: app}) })
+            .then(res => res.json()).then(data => log(data.message, data.success ? 'ok' : 'err'));
+        }
+        function launchFolder(folder) {
+            log(`> Opening directory: ${folder.toUpperCase()}...`, 'info');
+            fetch('/api/launch/folder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({folder: folder}) })
+            .then(res => res.json()).then(data => log(data.message, data.success ? 'ok' : 'err'));
+        }
+
+        // ================= TERMINAL HUB LOGIC =================
+        
+        // Direct open
+        function openTerm(term) {
+            log(`> Booting ${term.toUpperCase()} terminal...`, 'info');
+            fetch('/api/terminal/run', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({terminal: term, command: ""}) })
+            .then(res => res.json()).then(data => log(data.message, data.success ? 'ok' : 'err'));
+        }
+
+        // Quick command run
+        function runTermCmd(term, cmd) {
+            log(`> Executing [${cmd}] inside ${term.toUpperCase()}...`, 'info');
+            fetch('/api/terminal/run', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({terminal: term, command: cmd}) })
+            .then(res => res.json()).then(data => log(data.message, data.success ? 'ok' : 'err'));
+        }
+
+        // Pre-defined Commands
+        const commands = {
+            "kali": [
+                { label: "Whoami", cmd: "whoami" },
+                { label: "List Files", cmd: "ls -la" },
+                { label: "Network Info", cmd: "ip a" },
+                { label: "Nmap Scan (Localhost)", cmd: "nmap -F 127.0.0.1" },
+                { label: "Ping Google", cmd: "ping -c 4 8.8.8.8" },
+                { label: "System Info", cmd: "uname -a" }
+            ],
+            "ubuntu": [
+                { label: "Whoami", cmd: "whoami" },
+                { label: "Disk Space", cmd: "df -h" },
+                { label: "Update Packages", cmd: "sudo apt update" }
+            ],
+            "cmd": [
+                { label: "IP Config", cmd: "ipconfig" },
+                { label: "List Files", cmd: "dir" },
+                { label: "Ping Google", cmd: "ping 8.8.8.8" },
+                { label: "Tasklist", cmd: "tasklist" }
+            ]
+        };
+
+        // Update Dropdown Buttons
+        function updateCommands() {
+            const selected = document.getElementById('term-select').value;
+            const container = document.getElementById('command-buttons');
+            container.innerHTML = '';
+            
+            commands[selected].forEach(item => {
+                const btn = document.createElement('button');
+                btn.innerText = item.label;
+                btn.style.padding = '5px 10px';
+                btn.style.fontSize = '11px';
+                btn.onclick = () => runTermCmd(selected, item.cmd);
+                container.appendChild(btn);
+            });
+        }
+        // Initialize commands on load
+        updateCommands();
+
+        // ================= HACKER TOOLS =================
+        function scanDevices() {
+            log("> Initiating ARP Scan...", 'info');
+            fetch('/api/net/scan').then(res => res.json()).then(data => {
+                log(`Scan complete. Found ${data.count} devices.`, 'ok');
+                data.devices.forEach(d => log(`  -> IP: ${d.ip} | MAC: ${d.mac}`));
+            }).catch(err => log("SCAN ERROR: " + err, 'err'));
+        }
+
+        function pingTarget() {
+            const target = document.getElementById('ping-target').value;
+            if (!target) return log("ERROR: Enter target IP/Domain", 'err');
+            log(`> Pinging ${target}...`, 'info');
+            fetch('/api/net/ping', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target: target}) })
+            .then(res => res.json()).then(data => {
+                if (data.alive) log(`PING SUCCESS: ${target} is ALIVE | Latency: ${data.latency}`, 'ok');
+                else log(`PING FAILED: ${target} is OFFLINE`, 'err');
+            });
+        }
+
+        function portScan() {
+            const target = document.getElementById('port-target').value;
+            const rangeStr = document.getElementById('port-range').value;
+            if (!target || !rangeStr) return log("ERROR: Enter Target and Port Range", 'err');
+            const parts = rangeStr.split('-');
+            const start = parseInt(parts[0]);
+            const end = parseInt(parts[1]) || start;
+
+            log(`> Scanning ${target} ports ${start}-${end}...`, 'info');
+            fetch('/api/net/portscan', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target: target, start: start, end: end}) })
+            .then(res => res.json()).then(data => {
+                if (data.success) {
+                    log(`Scan complete in ${data.elapsed_sec}s. Scanned: ${data.scanned} ports.`, 'ok');
+                    if (data.open_ports.length > 0) log(`OPEN PORTS: ${data.open_ports.join(', ')}`, 'info');
+                    else log(`No open ports found.`);
+                } else log(data.message, 'err');
+            });
+        }
+
+        // ================= POWER =================
+        let currentPowerAction = '';
+        function powerAction(action) {
+            currentPowerAction = action;
+            document.getElementById('power-modal').style.display = 'flex';
+            document.getElementById('access-code').value = '';
+            log(`[WARNING] Power action requested: ${action.toUpperCase()}`, 'err');
+        }
+        function closeModal() { document.getElementById('power-modal').style.display = 'none'; log(`Power action aborted.`); }
+        function confirmPower() {
+            const code = document.getElementById('access-code').value;
+            fetch('/api/power', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({action: currentPowerAction, code: code}) })
+            .then(res => res.json()).then(data => {
+                if (data.success) { log(data.message, 'info'); closeModal(); }
+                else { log("ACCESS DENIED: " + data.message, 'err'); document.getElementById('access-code').style.borderColor = 'var(--crimson)'; }
+            });
+        }
+
+        clearLog();
+        log("SYSTEM BOOT SUCCESSFUL. NEW TERMINAL HUB LOADED.", 'info');
+    </script>
+</body>
+</html>
